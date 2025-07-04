@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>CasinoParser</title>
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    <script type="module" src="main.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <h1>CasinoParser</h1>
+
+    <div>
+        <label for="startDate">開始日:</label>
+        <input type="date" id="startDate">
+        <label for="endDate">終了日:</label>
+        <input type="date" id="endDate">
+    </div>
+
+    <label for="folderInput" class="folder-label">
+        ログフォルダを選択
+    </label>
+    <input type="file" id="folderInput" webkitdirectory multiple style="display: none;" />
+    <div>latest.logを含めて読み込みたい場合、Minecraftを終了させた状態で実行してください。</div>
+    <h2>結果</h2>
+    <div class="tabs">
+        <button class="tab-button active" data-tab="tab-bar">酒</button>
+        <button class="tab-button" data-tab="tab-slot">スロット</button>
+        <button class="tab-button" data-tab="tab-other">両替機、丁半など</button>
+    </div>
+
+    <div class="tab-content" id="tab-bar">
+        <table>
+            <thead>
+                <tr>
+                    <th>酒名</th>
+                    <th>支出</th>
+                    <th>収入</th>
+                    <th>収支</th>
+                    <th>確率</th>
+                </tr>
+            </thead>
+            <tbody id="stats-bar-body"></tbody>
+        </table>
+    </div>
+
+    <div class="tab-content hidden" id="tab-slot">
+        <table>
+            <thead>
+                <tr>
+                    <th>スロット名</th>
+                    <th>支出</th>
+                    <th>収入</th>
+                    <th>収支</th>
+                </tr>
+            </thead>
+            <tbody id="stats-slot-body"></tbody>
+        </table>
+    </div>
+
+    <div class="tab-content hidden" id="tab-other">
+        <table>
+            <thead>
+                <tr>
+                    <th>両替機</th>
+                    <th>支払金額</th>   
+                    <th></th>            
+                    <th>受取金額</th>    
+                    <th></th>     
+                    <th>収支</th>         
+                </tr>
+            </thead>
+            <tbody id="stats-changer-body"></tbody>
+        </table>
+        <table>
+            <thead>
+                <tr>
+                    <th>丁半</th>
+                    <th>支出</th>
+                    <th>収入</th>
+                    <th>収支</th>
+                </tr>
+            </thead>
+            <tbody id="stats-ptop-body"></tbody>
+        </table>
+    </div>
+</html>
