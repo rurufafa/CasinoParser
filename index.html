@@ -23,7 +23,14 @@
         ログフォルダを選択
     </label>
     <input type="file" id="folderInput" webkitdirectory multiple style="display: none;" />
-    <div>latest.logを含めて読み込みたい場合、Minecraftを終了させた状態で実行してください。</div>
+    <p>latest.logを含めて読み込みたい場合、Minecraftを終了させた状態で実行してください。</p>
+    <p>複数アカウントのログを含む場合、正しく読み取れません。</p>
+    <div id="log-status">
+        <p>処理中ファイル: <span id="current-file">-</span></p>
+        <p>MCID: <span id="current-mcid">-</span></p>
+        <p>読み込みログ数: <span id="line-count">0</span></p>
+        <p>カジノログ数: <span id="casino-count">0</span></p>
+    </div>
     <h2>結果</h2>
     <div class="tabs">
         <button class="tab-button active" data-tab="tab-bar">酒</button>
@@ -37,9 +44,13 @@
                 <tr>
                     <th>酒名</th>
                     <th>支出</th>
+                    <th></th>
                     <th>収入</th>
+                    <th></th>
                     <th>収支</th>
                     <th>確率</th>
+                    <th></th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody id="stats-bar-body"></tbody>
@@ -52,8 +63,13 @@
                 <tr>
                     <th>スロット名</th>
                     <th>支出</th>
+                    <th></th>
                     <th>収入</th>
+                    <th></th>
                     <th>収支</th>
+                    <th></th>
+                    <th>回転時間</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody id="stats-slot-body"></tbody>
@@ -69,7 +85,10 @@
                     <th></th>            
                     <th>受取金額</th>    
                     <th></th>     
-                    <th>収支</th>         
+                    <th>収支</th>  
+                    <th></th>
+                    <th></th>
+                    <th></th>       
                 </tr>
             </thead>
             <tbody id="stats-changer-body"></tbody>
@@ -79,11 +98,24 @@
                 <tr>
                     <th>丁半</th>
                     <th>支出</th>
+                    <th></th>
                     <th>収入</th>
+                    <th></th>
                     <th>収支</th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody id="stats-ptop-body"></tbody>
         </table>
     </div>
+
+    <dialog id="detail-modal">
+        <form method="dialog">
+            <h3 id="detail-modal-title"></h3>
+            <div id="detail-modal-content"></div>
+            <button>閉じる</button>
+        </form>
+    </dialog>
 </html>
