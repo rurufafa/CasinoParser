@@ -3,16 +3,16 @@ import GambleParser from './parser.js';
 
 class Status {
     constructor() {
-        this.mcid = null;
+        this.mcids = new Set();
         this.server = null;
         this.location = "login";
     }
 
     update(line) {
         // --- 状態を更新 ---
-        const userMatch = line.match(/^Setting user: (.+)/); // mcid
+        const userMatch = line.match(/^Setting user: (.+)/); // mcids
         if (userMatch) 
-            this.mcid = userMatch[1];
+            this.mcids.add(userMatch[1]);
 
         const serverMatch = line.match(/^Connecting to (.+)/); // server
         if (serverMatch) 
@@ -23,13 +23,17 @@ class Status {
         if (tpMatch) 
             this.location = tpMatch[1];
 
-        if (this.mcid) {
+        if (this.mcids.size > 0) {
             // man10location
             // (ログインサーバーもしくはサーバー移動~ワープログ表示)
-            const joined = new RegExp(
-                `^\\[System\\] \\[CHAT\\] ${this.mcid}(（旧名.*?）)?がゲームに参加しました`);
-            if (joined.test(line)) 
-                this.location = "login";
+            for (const mcid of this.mcids) {
+                const joined = new RegExp(
+                    `^\\[System\\] \\[CHAT\\] ${mcid}(（旧名.*?）)?がゲームに参加しました`);
+                if (joined.test(line)) {
+                    this.location = "login";
+                    break;
+                }
+            }
         }
         return false;
     }
@@ -98,7 +102,7 @@ async function processFiles(files, startDateStr, endDateStr, barInfo, slotInfo) 
                 // MCIDが変更されたら更新
                 status.update(content);
 
-                if (status.mcid && status.server === "dan5.red, 25565") {
+                if (status.mcids.size > 0 && status.server === "dan5.red, 25565") {
                     if (status.location.includes('casino') || status.location.includes('devil')) {
                         const chatMatch = content.match(/\[System\] \[CHAT\] (.+)/);
                         if (!chatMatch)
@@ -111,7 +115,7 @@ async function processFiles(files, startDateStr, endDateStr, barInfo, slotInfo) 
                 }
             }
 
-            currentMcidElem.textContent = status.mcid;
+            currentMcidElem.textContent = Array.from(status.mcids).join(", ");
             lineCountElem.textContent = totalLines;
             casinoCountElem.textContent = parser.it + 1;
         } catch (e) {
