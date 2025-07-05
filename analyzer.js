@@ -170,8 +170,6 @@ export default class GambleAnalyzer {
 
             if (genre === "BarSlot") {
                 const key = amount / 10000;
-                console.log("name:",name);
-                console.log(key);
                 if (direction === "gain" && key in stats.barSlotInfo[name]) 
                     stats.barSlotInfo[name][key]++;
             }
@@ -298,11 +296,6 @@ export default class GambleAnalyzer {
             // duration を追加
             const price = this.logs[ids[0]].price; // グループ内は同一価格帯のはず
             if (stats.prices[price] && stats.prices[price].slots[name]) {
-                if (price === 10000) {
-                    console.log(duration,name);
-                    console.log(this.logs[ids[0]].datetime, this.logs[ids[0]].chat );
-                    console.log(this.logs[ids.at(-1)].datetime, this.logs[ids.at(-1)].chat );
-                }
                 stats.prices[price].slots[name].duration += duration;
                 stats.total.duration += duration;
             }
