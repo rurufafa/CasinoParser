@@ -221,6 +221,10 @@ export default class LogParser {
             }
 
             const lastGainMap = {};
+            lastGainMap[200000] = "Triumph";
+            lastGainMap[250000] = "ヒミツのお酒";
+            lastGainMap[4000] = "店長特製コンクラーヴェ";
+            lastGainMap[20000] = "店長特製ブルームーン"; 
 
             for (const id of section) {
                 const log = this.logs[id];
