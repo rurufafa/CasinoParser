@@ -23,99 +23,53 @@
         ログフォルダを選択
     </label>
     <input type="file" id="folderInput" webkitdirectory multiple style="display: none;" />
-    <p>latest.logを含めて読み込みたい場合、Minecraftを終了させた状態で実行してください。</p>
-    <p>複数アカウントのログを含む場合、正確性が少し落ちます。</p>
     <p>
-        作者がスロットにわかなので情報提供していただけると助かります。→
-        <a href="https://github.com/rurufafa/CasinoParser/blob/main/README.md" target="_blank" rel="noopener noreferrer">
-            GitHubリポジトリ
+        Minecraftのログファイルからカジノ行動を解析し収支を計算します。<br>
+        latest.logを含めて読み込みたい場合、Minecraftを終了させた状態で実行してください。<br>
+        情報は不正確な場合がありますが、ご了承ください。<br>
+    </p>
+
+    <p>
+        [複数アカウントのログを含んでいる場合の注意点]<br>
+        同一のMinecraftフォルダを参照している複数のクライアント、アカウントを同時に起動した場合<br>
+        latest.logに複数プロセスが書き込もうとすることで、一部のログが消えている可能性が高いです。<br>
+        そのため、情報の正確性が落ちます。
+    </p>
+
+    <p>
+        スロットの詳細情報から役名を教えてくださると助かります。スロット推定の精度が上がります。(other以外)→
+        <a href="https://github.com/rurufafa/CasinoParser/blob/main/slotInfo.ini" target="_blank" rel="noopener noreferrer">
+            スロットの役一覧
         </a>
     </p>
 
     <div id="log-status">
         <p>処理中ファイル: <span id="current-file">-</span></p>
-        <p>MCID: <span id="current-mcid">-</span></p>
         <p>読み込みログ数: <span id="line-count">0</span></p>
         <p>カジノログ数: <span id="casino-count">0</span></p>
     </div>
     <h2>結果</h2>
-    <div class="tabs">
-        <button class="tab-button active" data-tab="tab-bar">酒</button>
-        <button class="tab-button" data-tab="tab-slot">スロット</button>
-        <button class="tab-button" data-tab="tab-other">両替機、丁半など</button>
+
+    <!-- タブボタン -->
+    <div class="tab-buttons">
+        <button class="tab-button active" data-tab="bar">酒</button>
+        <button class="tab-button" data-tab="slot">スロット</button>
+        <button class="tab-button" data-tab="changer">両替機</button>
+        <button class="tab-button" data-tab="ptop">対人</button>
     </div>
 
-    <div class="tab-content" id="tab-bar">
-        <table>
-            <thead>
-                <tr>
-                    <th>酒名</th>
-                    <th>支出</th>
-                    <th></th>
-                    <th>収入</th>
-                    <th></th>
-                    <th>収支</th>
-                    <th>確率</th>
-                    <th></th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody id="stats-bar-body"></tbody>
-        </table>
+    <!-- タブごとの表示領域 -->
+    <div id="bar" class="tab-content">
+        <div id="bar-table-container"></div>
     </div>
-
-    <div class="tab-content hidden" id="tab-slot">
-        <table>
-            <thead>
-                <tr>
-                    <th>スロット名</th>
-                    <th>支出</th>
-                    <th></th>
-                    <th>収入</th>
-                    <th></th>
-                    <th>収支</th>
-                    <th></th>
-                    <th>回転時間</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody id="stats-slot-body"></tbody>
-        </table>
+    <div id="slot" class="tab-content hidden">
+        <div id="slot-table-container"></div>
     </div>
-
-    <div class="tab-content hidden" id="tab-other">
-        <table>
-            <thead>
-                <tr>
-                    <th>両替機</th>
-                    <th>支払金額</th>   
-                    <th></th>            
-                    <th>受取金額</th>    
-                    <th></th>     
-                    <th>収支</th>  
-                    <th></th>
-                    <th></th>
-                    <th></th>       
-                </tr>
-            </thead>
-            <tbody id="stats-changer-body"></tbody>
-        </table>
-        <table>
-            <thead>
-                <tr>
-                    <th>丁半</th>
-                    <th>支出</th>
-                    <th></th>
-                    <th>収入</th>
-                    <th></th>
-                    <th>収支</th>
-                    <th></th>
-                    <th></th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody id="stats-ptop-body"></tbody>
-        </table>
+    <div id="changer" class="tab-content hidden">
+        <div id="changer-table-container"></div>
+    </div>
+    <div id="ptop" class="tab-content hidden">
+        <div id="ptop-table-container"></div>
     </div>
 
     <dialog id="detail-modal">

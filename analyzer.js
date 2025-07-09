@@ -1,38 +1,59 @@
-export default class GambleAnalyzer {
-    constructor(barInfo, slotInfo, logs) {
+export default class LogAnalyzer {
+    constructor(barInfo, slotInfo, logs, sectionMap) {
         this.barInfo = barInfo;
         this.slotInfo = slotInfo;
         this.logs = logs;
-        this.idBySlotName = {}; // 各スロットの関連ログ
+        this.sectionMap = sectionMap;
+
         this.idByBarName = {};  // 各酒の関連ログ
+        this.idBySlotName = {}; // 各スロットの関連ログ
     }
 
-    analyze(idByType) {
-        const barStats = this._analyzeBarLog(idByType.Bar || []);
-        const slotStats = this._analyzeSlotLog(idByType.Slot || []);
-        const changerStats = this._analyzeChangerLog(idByType.Changer || []);
-        const ptopStats = this._analyzePtoPLog(idByType.PtoP || []);
-        return {
-            barStats,
-            slotStats,
-            changerStats,
-            ptopStats
-        };
+    analyze() {
+        const stats = {
+            bar : {},
+            slot : {},
+            changer : {},
+            ptop : {}
+        }
+        stats.bar = this._analyzeBarLog();
+        stats.slot = this._analyzeSlotLog();
+        stats.changer = this._analyzeChangerLog();
+        stats.ptop = this._analyzePtoPLog();
+
+        const idMap = {
+            bar : this.idByBarName,
+            slot : this.idBySlotName, 
+            changer : this.sectionMap.changer,
+            ptop : this.sectionMap.ptop
+        }
+
+        return { logs : this.logs, idMap, stats };
     }
 
-    _analyzeBarLog(ids) {
+    _getOrInit(obj, keys, defaultValue) {
+        let target = obj;
+        for (let i = 0; i < keys.length - 1; i++) {
+            if (!target[keys[i]]) target[keys[i]] = {};
+            target = target[keys[i]];
+        }
+        const lastKey = keys.at(-1);
+        if (!target[lastKey]) 
+            target[lastKey] = typeof defaultValue === "function" ? defaultValue() : defaultValue;
+        return target[lastKey];
+    }
+
+    _analyzeBarLog() {
         const stats = {
             total : {
                 payAmount : 0,
                 gainAmount : 0,
             },
             genres : {},
-            // { genre: { payAmount, gainAmount, bars } } } }
-            // genre.bars = { name: { pay, payAmount, gain, gainAmount, probability } }
-            loseStreaks : {}, // { barName: [{count, startId, endId}, ...] }
-            winStreaks : {},  // { barName: [{count, startId, endId}, ...] }
+            loseStreaks : {},
+            winStreaks : {},
             dangoInfo : {
-                gain : {10 : 0, 20 : 0, 40 : 0, 80 : 0, 160 : 0},
+                sold : {10 : 0, 20 : 0, 40 : 0, 80 : 0},
                 message : {10 : 0, 20 : 0, 40 : 0, 80 : 0} 
             },
             barSlotInfo : {
@@ -42,160 +63,153 @@ export default class GambleAnalyzer {
         };
 
         const lastGainCount = {}; // 直近の当選からの購入回数 (for loseStreaks)
-        const lastLoseCount = {}; // 直近のハズレからの当選回数 (for winStreaks)
         const loseStartId = {}; // { barName: startId }
+
+        const lastLoseCount = {}; // 直近のハズレからの当選回数 (for winStreaks)
         const winStartId = {};  // { barName: startId }
-        const lastWasLose = {};   // idByBarName (ハズレが連続する場合はIDを記録しない)
+        
+        const lastWasLose = {};   // ハズレが連続する場合はIDを記録しない (for idByBarName)
+        for (const [sectionId, section] of Object.entries(this.sectionMap.bar)) {
+            // この区間内で購入された酒
+            const purchasedBefore = {};
 
-        for (const id of ids) {
-            const log = this.logs[id];
-            const {name, amount, direction} = log;
+            for (const id of section) {
+                const log = this.logs[id];
+                const {name, amount, direction} = log;
 
-            if (!this.idByBarName[name])
-                this.idByBarName[name] = [];
-            this.idByBarName[name].push(id);
+                // ハズレの処理
+                if (direction === "lose") {
+                    // 区間内で購入した酒について処理
+                    for (const barName of Object.keys(this.barInfo)) {
+                        if (!purchasedBefore[barName]) 
+                            continue; 
 
-            // ハズレの処理
-            if (direction === "lose") {
-                // 全酒について処理
-                for (const barName of Object.keys(this.barInfo)) {
-                    if (!lastWasLose[barName]) {
-                        if (!this.idByBarName[barName])
-                            this.idByBarName[barName] = [];
-                        // IDを記録(前回がハズレでないとき)
-                        this.idByBarName[barName].push(id);
+                        const genre = this.barInfo[barName].genre;
+
+                        if (lastWasLose[barName] === false) {
+                            const idArr = this._getOrInit(this.idByBarName, [genre, barName, sectionId], () => []);
+                            idArr.push(id);
+                        }
+                        lastWasLose[barName] = true;
                     }
-                    lastWasLose[barName] = true;
+
+                    // 連勝記録のリセット
+                    for (const barName in lastLoseCount) {
+                        if (!purchasedBefore[barName]) 
+                            continue; 
+                        const winArr = this._getOrInit(stats, ['winStreaks', barName], () => []);
+                        winArr.push({
+                            count: lastLoseCount[barName],
+                            startId: winStartId[barName],
+                            endId: id
+                        });
+                        lastLoseCount[barName] = 0;
+                        winStartId[barName] = null;
+                    }
+                    continue;
                 }
 
-                // 連勝記録のリセット
-                for (const bar in lastLoseCount) {
-                    if (!stats.winStreaks[bar])
-                        stats.winStreaks[bar] = [];
+                // ハズレ以外の処理
+                if (!name || !(name in this.barInfo)) 
+                    continue;
+                lastWasLose[name] = false;
 
-                    stats.winStreaks[bar].push({
-                        count: lastLoseCount[bar],
-                        startId: winStartId[bar],
-                        endId: id
-                    });
-                    lastLoseCount[bar] = 0;
-                    winStartId[name] = null;
-                }
+                const genre = this.barInfo[log.name].genre;
+                const idArr = this._getOrInit(this.idByBarName, [genre, name, sectionId], () => []);
+                idArr.push(id);
 
-                continue;
-            }
-
-            // ハズレ以外の処理
-            if (!name || !(name in this.barInfo))
-                continue;
-
-            // ハズレ連続のリセット
-            lastWasLose[name] = false;
-
-            // IDを記録
-            if (!this.idByBarName[name])
-                this.idByBarName[name] = [];
-            this.idByBarName[name].push(id);
-
-            const genre = this.barInfo[name].genre;
-
-            // 初期化
-            if (!stats.genres[genre]) {
-                stats.genres[genre] = {payAmount : 0, gainAmount : 0, bars : {}};
-            }
-            if (!stats.genres[genre].bars[name]) {
-                stats.genres[genre].bars[name] = {
+                // 初期化
+                const g = this._getOrInit(stats, ['genres', genre], () => ({payAmount : 0, gainAmount : 0, bars : {}}));
+                const b  = this._getOrInit(g.bars, [name], () => ({
                     pay : 0,
                     payAmount : 0,
+                    payCount : 0,
                     gain : this.barInfo[name].gainPrice,
                     gainAmount : 0,
+                    gainCount : 0,
                     probability : 0
-                };
-            }
+                }));
 
-            const g = stats.genres[genre];
-            const b = g.bars[name];
+                if (direction === "pay") {
+                    purchasedBefore[name] = true;
 
-            if (direction === "pay") {
-                stats.total.payAmount += amount;
-                g.payAmount += amount;
-                b.payAmount += amount;
-                if (b.pay === 0)
-                    b.pay = amount;
+                    stats.total.payAmount += amount;
+                    g.payAmount += amount;
+                    b.payAmount += amount;
+                    b.payCount++;
 
-                // 連敗記録のインクリメント
-                if (!lastGainCount[name]) {
-                    lastGainCount[name] = 0;
-                    loseStartId[name] = id;
-                }
-                lastGainCount[name]++;
-            }
+                    if (b.pay === 0) 
+                        b.pay = amount;
 
-            if (direction === "gain") {
-                stats.total.gainAmount += amount;
-                g.gainAmount += amount;
-                b.gainAmount += amount;
+                    // 連敗記録のインクリメント
+                    lastGainCount[name] = (lastGainCount[name] ?? 0) + 1;
+                    if (loseStartId[name] === null || loseStartId[name] === undefined) {
+                        loseStartId[name] = id;
+                    }
+                } else if (direction === "gain") {
+                    stats.total.gainAmount += amount;
+                    g.gainAmount += amount;
+                    b.gainAmount += amount;
+                    b.gainCount++;
 
-                
-                // 連敗記録のリセット
-                if (lastGainCount[name]) {
-                    if (!stats.loseStreaks[name])
-                        stats.loseStreaks[name] = [];
-                    stats.loseStreaks[name].push({
-                        count: lastGainCount[name],
-                        startId: loseStartId[name],
-                        endId: id
-                    });
-                    lastGainCount[name] = 0;
-                    loseStartId[name] = null;
-                }
+                    // 連敗記録のリセット
+                    if (lastGainCount[name]) {
+                        const loseArr = this._getOrInit(stats, ['loseStreaks', name], () => []);
+                        loseArr.push({
+                            count: lastGainCount[name],
+                            startId: loseStartId[name],
+                            endId: id
+                        });
+                        lastGainCount[name] = 0;
+                        loseStartId[name] = null;
+                    }
 
-                // 連勝記録のインクリメント
-                if (!lastLoseCount[name]) {
-                    lastLoseCount[name] = 0;
-                    winStartId[name] = id;
-                }
-                lastLoseCount[name]++;
-            }
+                    // 連勝記録のインクリメント
+                    lastLoseCount[name] = (lastLoseCount[name] ?? 0) + 1;
+                    if (winStartId[name] === null || winStartId[name] === undefined) {
+                        winStartId[name] = id;
+                    }
 
-            // 団子酒のとき金額ごとにも保持する
-            if (genre === "Dan5") {
-                const key = amount / 10000;
-                if (direction === "gain" && key in stats.dangoInfo.gain) {
-                    stats.dangoInfo.gain[key]++;
-                } else if (direction === "mes" && key in stats.dangoInfo.message) {
-                    stats.dangoInfo.message[key]++;
-                }
-            }
-
-            if (genre === "BarSlot") {
-                const key = amount / 10000;
-                if (direction === "gain" && key in stats.barSlotInfo[name]) 
-                    stats.barSlotInfo[name][key]++;
+                } else {
+                    // チャージ・dan5当選記録の集計
+                    const key = amount / 10000;
+                    if (direction === "charge") {
+                        if (genre === "Dan5" && key in stats.dangoInfo.sold) {
+                            stats.dangoInfo.sold[key]++;
+                        } else if (genre === "BarSlot" && name in stats.barSlotInfo && key in stats.barSlotInfo[name]) {
+                            stats.barSlotInfo[name][key]++;
+                        }
+                        stats.total.gainAmount += amount;
+                        g.gainAmount += amount;
+                        b.gainAmount += amount;
+                    } else if (direction === "mes") {
+                        if (genre === "Dan5" && key in stats.dangoInfo.message)
+                            stats.dangoInfo.message[key]++;
+                    }
+                }   
             }
         }
-        
+
+        const lastId = Object.values(this.sectionMap.bar).at(-1)?.at(-1) ?? null;
+
         // 最後に連勝記録、連敗記録を保存
-        for (const bar in lastGainCount) {
-            if (lastGainCount[bar]) {
-                if (!stats.loseStreaks[bar])
-                    stats.loseStreaks[bar] = [];
-                stats.loseStreaks[bar].push({
-                    count: lastGainCount[bar],
-                    startId: loseStartId[bar],
-                    endId: ids[ids.length - 1]
+        for (const barName in lastGainCount) {
+            if (lastGainCount[barName]) {
+                const loseArr = this._getOrInit(stats, ['loseStreaks', barName], () => []);
+                loseArr.push({
+                    count: lastGainCount[barName],
+                    startId: loseStartId[barName],
+                    endId: lastId ?? 9999999
                 });
             }
         }
-        for (const bar in lastLoseCount) {
+        for (const barName in lastLoseCount) {
             if (lastLoseCount[bar]) {
-                if (!stats.winStreaks[bar])
-                    stats.winStreaks[bar] = [];
-
-                stats.winStreaks[bar].push({
-                    count: lastLoseCount[bar],
-                    startId: winStartId[bar],
-                    endId: ids[ids.length - 1]
+                const winArr = this._getOrInit(stats, ['winStreaks', barName], () => []);
+                winArr.push({
+                    count: lastLoseCount[barName],
+                    startId: winStartId[barName],
+                    endId: lastId ?? 9999999
                 });
             }
         }
@@ -206,7 +220,7 @@ export default class GambleAnalyzer {
             const bars = stats.genres[genre].bars;
             for (const name of Object.keys(bars)) {
                 const b = bars[name];
-                const p = b.payAmount ? ((b.gainAmount / b.gain) / (b.payAmount / b.pay)) : 0;
+                const p = b.payAmount ? ((b.gainCount) / (b.payCount)) : 0;
                 // 連荘酒の継続率は、当選回数の割合をpとするとp/p+1
                 if (streakBars.includes(name)) {
                     b.probability = p / (p + 1);
@@ -228,55 +242,50 @@ export default class GambleAnalyzer {
                 b.total = b.gainAmount - b.payAmount;
             }
         }
-
-        return stats;
+        return stats; 
     }
 
-    _analyzeSlotLog(slotGroups) {
+    _analyzeSlotLog() {
         const stats = {
             total : {
                 payAmount : 0,
                 gainAmount : 0,
                 duration: 0
             },
-            prices : {}, // { price: { payAmount, gainAmount, slots: { name: { payAmount,gainAmount,roleCounts,duration } } } }
+            prices : {}
         };
 
-        // 各スロット区間
-        for (const group of slotGroups) {
-            const name = group.name;
-            const ids = group.ids;
-            if (!name || ids.length === 0 || !(name === "不明" || name in this.slotInfo)) continue;
-
-            // 時間差を計算（最初と最後のログのdatetimeの差）
-            const startTime = new Date(this.logs[ids[0]].datetime);
-            const endTime = new Date(this.logs[ids.at(-1)].datetime);
+        for (const [sectionId, section] of Object.entries(this.sectionMap.slot)) {
+            const firstLog = this.logs[section[0]];
+            const lastLog = this.logs[section.at(-1)];
+            const startTime = new Date(firstLog.datetime);
+            const endTime = new Date(lastLog.datetime);
             const duration = endTime - startTime;
 
-            for (const id of ids) {
+            const name = firstLog.name;
+            const price = firstLog.price;
+            if (!name || !(name === "不明" || name in this.slotInfo) || price === undefined || price === null) 
+                continue;
+
+            const p = this._getOrInit(stats, ['prices', price], () => ({payAmount : 0, gainAmount : 0, slots : {}}));
+            const s = this._getOrInit(p.slots, [name], () => ({
+                payAmount : 0,
+                gainAmount : 0,
+                roleCounts: {},
+                duration : 0
+            }));
+            
+            s.duration += duration;
+            stats.total.duration += duration;
+
+            for (const id of section) {
                 const log = this.logs[id];
-                const { price, amount, direction, role } = log;
+                const { amount, direction, role } = log;
+                if (log.price === undefined || log.price === null || !log.name) 
+                    continue;
 
-                // IDを記録
-                if (!this.idBySlotName[name])
-                    this.idBySlotName[name] = [];
-                this.idBySlotName[name].push(id);
-
-                // 初期化
-                if (!stats.prices[price]) {
-                    stats.prices[price] = {payAmount : 0, gainAmount : 0, slots : {}};
-                }
-                if (!stats.prices[price].slots[name]) {
-                    stats.prices[price].slots[name] = {
-                        payAmount : 0,
-                        gainAmount : 0,
-                        roleCounts: {},
-                        duration : 0
-                    };
-                }
-
-                const p = stats.prices[price];
-                const s = p.slots[name];
+                const idArr = this._getOrInit(this.idBySlotName, [price, name, sectionId], () => []);
+                idArr.push(id);
 
                 if (direction === "pay") {
                     stats.total.payAmount += amount;
@@ -286,85 +295,68 @@ export default class GambleAnalyzer {
                     stats.total.gainAmount += amount;
                     p.gainAmount += amount;
                     s.gainAmount += amount;
-                } else if (direction === "hint" && role) {
-                    // 役名のカウント処理
+                } else if (direction === "role" && role) {
                     s.roleCounts[role] = (s.roleCounts[role] || 0) + 1;
                 }
-
-            }
-
-            // duration を追加
-            const price = this.logs[ids[0]].price; // グループ内は同一価格帯のはず
-            if (stats.prices[price] && stats.prices[price].slots[name]) {
-                stats.prices[price].slots[name].duration += duration;
-                stats.total.duration += duration;
             }
         }
 
-        // 合計 (全体、同価格帯スロット、スロットごと)
         stats.total.total = stats.total.gainAmount - stats.total.payAmount;
         for (const price of Object.keys(stats.prices)) {
             const p = stats.prices[price];
             p.total = p.gainAmount - p.payAmount;
 
-            const slots = p.slots;
-            for (const name of Object.keys(slots)) {
-                const s = slots[name];
+            for (const name of Object.keys(p.slots)) {
+                const s = p.slots[name];
                 s.total = s.gainAmount - s.payAmount;
             }
         }
-
         return stats;
     }
 
-    _analyzeChangerLog(ids) {
+    _analyzeChangerLog() {
         const stats = {
-            total : {
-                gainAmount : 0
+            total: {
+                gainAmount: 0
             },
-            prices : {}, // { price: { gainAmount, rawText } }
-
+            prices: {}
         };
 
-        for (const id of ids) {
-            const log = this.logs[id];
-            const {amount, price, rawText} = log;
-            if (!price || !amount)
-                continue;
+        for (const [sectionId, section] of Object.entries(this.sectionMap.changer)) {
+            for (const id of section) {
+                const log = this.logs[id];
+                const { amount, name } = log;
+                if (!name || !amount) continue;
 
-            if (!stats.prices[price]) {
-                stats.prices[price] = {gainAmount : 0};
+                const p = this._getOrInit(stats, ['prices', name], () => ({ gainAmount: 0 }));
+                stats.total.gainAmount += amount;
+                p.gainAmount += amount;
             }
-            const p = stats.prices[price];
-            stats.total.gainAmount += amount;
-            p.gainAmount += amount;
-            p.rawText = rawText;
         }
         return stats;
     }
 
-    _analyzePtoPLog(ids) {
+    _analyzePtoPLog() {
         const stats = {
-            total : {
-                payAmount : 0,
-                gainAmount : 0
+            total: {
+                payAmount: 0,
+                gainAmount: 0
             }
         };
 
-        for (const id of ids) {
-            const log = this.logs[id];
-            const {amount, direction} = log;
-            if (!amount)
-                continue;
+        for (const [sectionId, ids] of Object.entries(this.sectionMap.ptop)) {
+            for (const id of ids) {
+                const log = this.logs[id];
+                const { amount, direction } = log;
+                if (!amount) continue;
 
-            if (direction === "pay") {
-                stats.total.payAmount += amount;
-            } else if (direction === "gain") {
-                stats.total.gainAmount += amount;
+                if (direction === "pay") {
+                    stats.total.payAmount += amount;
+                } else if (direction === "gain") {
+                    stats.total.gainAmount += amount;
+                }
             }
         }
-
-        // 合計 (全体)
         stats.total.total = stats.total.gainAmount - stats.total.payAmount;
 
         return stats;

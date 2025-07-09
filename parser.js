@@ -1,370 +1,418 @@
-export default class GambleParser {
-    constructor(barInfo, slotInfo) {
-        this.it = 0;                                           // ログID
-        this.logs = {};
+export default class LogParser {
+    constructor(barInfo, slotInfo, logs) {
+        this.barInfo = barInfo;
+        this.slotInfo = slotInfo;
+        this.logs = logs;
 
-        this.barInfo = barInfo;                                // 酒の情報
-        this.lastBarMap = this._initLastBarMap(barInfo);       // 当選金額に対応する直近に購入した酒
-        this.lastBarBuyTime = new Map();                       // 各酒の直近の購入時刻
-        this.lastBarGainTime = new Map();
-        this.dangoPrices = [ 100000, 200000, 400000, 800000 ]; // 団子酒の売却額
+        this.mcid = null;
+        this.server = null;
+        this.location = null;
+        this.isInCasino = null;
 
-        this.slotInfo = slotInfo;                              // スロットの情報
-        this.slotGroup = {};
-        this.slotPriceMap = this._initSlotPriceMap(slotInfo);  // 1回転の金額に対応するスロット一覧
-        this.lastSlotPrice = 0;                                // 直近に回したスロットの1回転の金額
-        this.lastSlotDirection = null;                         // 直近に回したスロットの状態
+        this.dangoPrices = [100000, 200000, 400000, 800000];
+        this.rolesByFreeSlot = this._getRolesByFreeSlot(slotInfo);
     }
 
-    _initLastBarMap(barInfo) {
-        const map = new Map();
+    _getRolesByFreeSlot(slotInfo) {
+        const rolesByFreeSlot = {};
+        for (const [slotName, { price, roles }] of Object.entries(slotInfo)) {
+            if (price === 0 && Array.isArray(roles) && roles.length > 0) {
+                rolesByFreeSlot[slotName] = [...roles]; 
+            }
+        }
+        return rolesByFreeSlot;
+    }
 
-        for (const [name, info] of Object.entries(barInfo)) {
-            map.set(info.gainPrice, name);
+    parseLog() {
+        // 状態判定 & データタイプごとにIDを分類
+        const idMap = {
+            status : [],
+            bar : [],
+            slot : [],
+            changer : [],
+            ptop : []
+        }
+        const exitsId = [];
+        for (const [id, log] of Object.entries(this.logs)) {
+            if (log.type === "status") {
+                if(this._updateStatus(log))
+                    exitsId.push(id);
+                idMap.status.push(id);
+            } else if (this.isInCasino) {
+                idMap[log.type].push(id);
+            }
         }
 
-        return map;
-    }
+        // セクションに分割
+        const sectionMap = {
+            status : {},
+            bar : {},
+            slot : {},
+            changer : {},
+            ptop : {}
+        };
 
-    _initSlotPriceMap(slotInfo) {
-        const map = new Map();
-        for (const [name, info] of Object.entries(slotInfo)) {
-            if (!map.has(info.price))
-                map.set(info.price, []);
-            map.get(info.price).push({name, ...info});
+        for (const [type, ids] of Object.entries(idMap)) {
+            ids.sort((a, b) => new Date(this.logs[a].datetime) - new Date(this.logs[b].datetime));
+
+            const splitSections = (type === "slot")
+                ? this._splitSlotSections(ids)
+                : this._splitDefaultSections(ids, exitsId);
+
+            splitSections.forEach((section, index) => {
+                sectionMap[type][index] = section;
+
+                // ログ側にセクションIDを記録
+                section.forEach(id => {
+                    this.logs[id].sectionId = index;
+                });
+            });
         }
-        return map;
+
+        // 個別名の特定
+        this._resolveBarName(sectionMap.bar);
+        this._resolveSlotName(sectionMap.slot);
+
+        return [this.logs, sectionMap];
     }
 
-    _recentlyBought(barName, now, withinMs) {
-        const lastBuyTime = this.lastBarBuyTime.get(barName);
-        if (!lastBuyTime) return false;
+    _updateStatus(log) {
+        const man10Address = "dan5.red, 25565";
+        const casinoWorlds = ["casino", "bookmaker->casino", "casino->bookmaker", "exit_devil", "enter_devil"];
 
-        return (now - lastBuyTime <= withinMs);
-    }
+        const { direction, name } = log;
+        if (direction === "mcid") {
+            this.mcid = name;
+        } else if (direction === "server") { 
+            this.server = name;
+        } else if (direction === "location") {
+            this.location = name;
+        }
 
-    _recentlyGain(barName, now, withinMs) {
-        const lastGainTime = this.lastBarGainTime.get(barName);
-        if (!lastGainTime) return false;
-
-        return (now - lastGainTime <= withinMs);
-    }
-
-    parse(datetime, chatLine) {
-        const log =
-            this._parseBarLog(datetime, chatLine) ||
-            this._parseSlotLog(chatLine) ||
-            this._parseChangerLog(chatLine) ||
-            this._parsePtoPLog(chatLine) ||
-            this._parseSlotHintLog(chatLine);
-
-        if (log) {
-            this.logs[this.it] = {datetime, chat : chatLine, ...log};
-            this.it++;
+        const wasInCasino = this.isInCasino;
+        this.isInCasino = this.mcid && this.server === man10Address && casinoWorlds.includes(this.location);
+        if (wasInCasino && !this.isInCasino) {
             return true;
         }
         return false;
     }
 
-    _parseBarLog(datetime, line) {
-        const now = new Date(datetime);
+    _splitDefaultSections(ids, exitsId, timeThresholdMs = 20 * 60 * 1000) {
+        const sections = [];
+        let section = [];
+        let prevTime = null;
+        let exitIndex = 0;
+
+        for (const id of ids) {
+            const log = this.logs[id];
+            const time = new Date(log.datetime).getTime();
+
+            const timeDiff = prevTime !== null ? time - prevTime : 0;
+            const timeExceeded = prevTime !== null && timeDiff > timeThresholdMs;
+            let exitCasino = false;
+            while (
+                exitIndex < exitsId.length &&
+                id > exitsId[exitIndex]
+            ) {
+                exitCasino = true;
+                exitIndex++;
+            }
+            
+            const shouldSplit = section.length > 0 && (timeExceeded || exitCasino);
+
+            if (shouldSplit) {
+                sections.push(section);
+                section = [];
+            }
+
+            section.push(id);
+            prevTime = time;
+        }
+
+        if (section.length > 0) sections.push(section);
+        return sections;
+    }
+
+    _splitSlotSections(ids, timeThresholdMs = 2 * 60 * 1000) {
+        const sections = [];
+        let section = [];
+
+        let prevTime = null;
+        let prevPrice = null;
+        let prevDirection = "lose";
+
+        let inFreeSection = false;
+        let currentFreeSourceSlot = null;
+
+        for (const id of ids) {
+            const log = this.logs[id];
+            const time = new Date(log.datetime).getTime();
+            const price = log.direction === "pay" ? log.amount : prevPrice;
+            const role = log.role;
+            const direction = log.direction;
+
+            const timeDiff = prevTime !== null ? time - prevTime : 0;
+            const timeExceeded = prevTime !== null && timeDiff > timeThresholdMs;
+            const priceChanged = prevPrice !== null &&  price !== prevPrice;
+
+            let matchedFreeSlot = null;
+            if (role) {
+                for (const [slotName, roles] of Object.entries(this.rolesByFreeSlot)) {
+                    if (roles.includes(role)) {
+                        matchedFreeSlot = slotName;
+                        break;
+                    }
+                }
+            }
+
+            const isPay = direction === "pay";
+
+            // セクション分割条件
+            // 一定時間経過した、スロット価格が変化した、0円スロットが始まった、変わった、終わった
+            const shouldSplit =
+                section.length === 0 ? false :
+                timeExceeded || priceChanged ||
+                (prevDirection !== "pay" && matchedFreeSlot && !inFreeSection) ||
+                (inFreeSection && matchedFreeSlot && matchedFreeSlot !== currentFreeSourceSlot) ||
+                (inFreeSection && isPay); 
+
+            if (shouldSplit) {
+                sections.push(section);
+                section = [];
+                inFreeSection = false;
+                currentFreeSourceSlot = null;
+            }
+
+            section.push(id);
+
+            if (matchedFreeSlot) {
+                inFreeSection = true;
+                currentFreeSourceSlot = matchedFreeSlot;
+            }
+
+            prevTime = time;
+            prevPrice = price;
+            prevDirection = direction;
+        }
+
+        if (section.length > 0) 
+            sections.push(section);
+        return sections;
+    }
+
+    _resolveBarName(sections) {
         const barSlotStart = new Date("2025-04-05T00:00:00");
         const barSlotUpdate = new Date("2025-04-22T09:36:00");
 
-        const pay = line.match(/^あなたは ◆ (.+) を (\d{1,3}(?:,\d{3})*)円 で購入しました$/);
-        if (pay) {
-            const name = pay[1];
-            const amount = parseInt(pay[2].replace(/,/g, ""));
+        for (const section of Object.values(sections)) {
+            const prevTimeMap = {
+                pay : {},
+                gain : {},
+                charge : {},
+                lose : null
+            };
 
-            const info = this.barInfo[name];
-            const gainPrice = info?.gainPrice ?? null;
-
-            // 直近購入時刻を記録
-            this.lastBarBuyTime.set(name, new Date(datetime));
-
-            if (gainPrice)
-                this.lastBarMap.set(gainPrice, name);
-
-            return {type : "Bar", name, amount, direction : "pay"};
-        }
-
-        const gain = line.match(/^あなたは (\d{1,3}(?:,\d{3})*)円 獲得しました$/);
-        if (gain) {
-            const amount = parseInt(gain[1].replace(/,/g, ""));
-            let name = this.lastBarMap.get(amount) || null;
-
-            // スライムウィスキー5分以内の購入なし => 店長特製ブルームーン
-            if (name === "スライムウィスキー") {
-                if (now >= barSlotStart && !this._recentlyBought("スライムウィスキー", now, 5 * 60 * 1000)) {
-                    name = "店長特製ブルームーン";
-                }
+            const dan5Steps = {
+                50000 : false,
+                100000 : false,
+                200000 : false,
+                400000 : false,
+                800000 : false
             }
 
-            
-            // 直近獲得時刻を記録
-            this.lastBarGainTime.set(name, new Date(datetime));
+            const lastGainMap = {};
 
-            return {type : "Bar", name, amount, direction : "gain"};
-        }
+            for (const id of section) {
+                const log = this.logs[id];
+                const { datetime, direction, amount, name } = log;
+                const now = new Date(datetime);
 
-        // dan5またはBarSlot酒の売却額の現金チャージ
-        const charge = line.match(/^\[Man10Bank\](\d{1,3}(?:,\d{3})*)円チャージしました！$/);
-        if (charge) {
-            const amount = parseInt(charge[1].replace(/,/g, ""));
-
-            const isWithinBarSlot = 
-                (amount === 50000 && now >= barSlotStart && now < barSlotUpdate) ||
-                (amount === 100000 && now >= barSlotUpdate);
-
-            if (isWithinBarSlot) {
-                console.log("OK1");
-                const barNames = ["店長特製コンクラーヴェ", "店長特製ブルームーン"];
-                const candidates = [];
-
-                for (const name of barNames) {
-                    if (this._recentlyGain(name, now, 5 * 60 * 1000)) {
-                        console.log("candidates:", name);
-                        candidates.push(name);
-                    }
-                }
-
-                if (candidates.length > 0) {
-                    // どちらもある場合は直近の獲得を優先
-                    const recentName = candidates.reduce((a, b) => {
-                        const aTime = this.lastBarGainTime.get(a);
-                        const bTime = this.lastBarGainTime.get(b);
-                        return Math.abs(now - aTime) < Math.abs(now - bTime) ? a : b;
-                    });
-                    console.log("recentName:", recentName);
-                    return { type: "Bar", name: recentName, amount, direction : "gain" };
-                }
-            }
-
-            if (!this.dangoPrices.includes(amount))
-                return null;
-            return {type : "Bar", name : "花よりdan5", amount, direction : "gain"};
-        }
-
-        // ハズレログ
-        if (line === "ハズレ!") {
-            return {type : "Bar", direction : "lose"};
-        }
-
-        // dan5の当たりメッセージ
-        switch (line) {
-            case "§d§lまだまだ飲めそうな気がする":
-                return {type : "Bar", name : "花よりdan5", amount : 100000, direction : "mes"};
-            case "§c§l酔いを感じる...":
-                return {type : "Bar", name : "花よりdan5", amount : 200000, direction : "mes"};
-            case "§4§lまだ引き返せる...":
-                return {type : "Bar", name : "花よりdan5", amount : 400000, direction : "mes"};
-            case "§5§l後戻りはできない...":
-                return {type : "Bar", name : "花よりdan5", amount : 800000, direction : "mes"};
-        }
-
-        return null;
-    }
-
-    _parseSlotLog(line) {
-        const pay = line.match(/^(\d{1,3}(?:,\d{3})*)円支払いました$/);
-        if (pay) {
-            const amount = parseInt(pay[1].replace(/,/g, ""));
-            this.lastSlotPrice = amount;
-            this.lastSlotDirection = "pay";
-            return {type : "Slot", price : amount, amount, direction : "pay"};
-        }
-
-        const gain = line.match(/^(\d{1,3}(?:,\d{3})*)円受け取りました$/);
-        if (gain) {
-            const amount = parseInt(gain[1].replace(/,/g, ""));
-            if (this.lastSlotDirection !== "pay") {
-                // 支払いログがない場合
-                if (amount >= 350 && amount <= 400) {
-                    // プレイコインスロット
-                    this.lastSlotPrice = 0;
-                    return {type : "Slot", price : this.lastSlotPrice, amount, direction : "gain"};
-                } else if (amount === 1000000) {
-                    // ミリオンチャンススロット
-                    this.lastSlotPrice = 0;
-                    return {type : "Slot", price : this.lastSlotPrice, amount, direction : "gain"};
-                } 
-            }
-
-            this.lastSlotDirection = "gain";
-            return {type : "Slot", price : this.lastSlotPrice, amount, direction : "gain"};
-        }
-
-        const lose = line.match(/^\[Man10Slot\]外れました$/);
-        if (lose) 
-            this.lastSlotDirection = "gain";
-        return null;
-    }
-
-    _parseChangerLog(line) {
-        const match = line.match(/^\[Gacha2\]X+([A-Za-z0-9]+\(\$\d{1,3}(?:,\d{3})*\))X+が当たりました。$/);
-        if (match) {
-            const rawText = match[1]; 
-
-            const amountMatch = rawText.match(/\$(\d{1,3}(?:,\d{3})*)/);
-            const amount = amountMatch ? parseInt(amountMatch[1].replace(/,/g, "")) : null;
-
-            return {type: "Changer", amount, price: amount, direction: "gain", rawText};
-        }
-        return null;
-    }
-
-    _parsePtoPLog(line) {
-        const pay = line.match(/^(\d+)\.0円支払いました$/);
-        if (pay)
-            return {type : "PtoP", amount : parseInt(pay[1]), direction : "pay"};
-
-        const gain = line.match(/^(\d+)\.0円受取りました$/);
-        if (gain)
-            return {type : "PtoP", amount : parseInt(gain[1]), direction : "gain"};
-
-        return null;
-    }
-
-    _parseSlotHintLog(line) {
-        if (!this.lastSlotPrice)
-            return null;
-
-        const match = line.match(/^\[Man10Slot\]おめでとうございます！(.+?)です！$/);
-        const matchedRole = match ? match[1] : null;
-        if (!matchedRole)
-            return null;
-
-        // 1回転の金額が一致するスロットを抽出
-        const matchedSlots = this.slotPriceMap.get(this.lastSlotPrice) || [];
-
-        // スロットごとに一致する役名を検索
-        for (const slot of matchedSlots) {
-            if (slot.roles && slot.roles.includes(matchedRole)) {
-                return {
-                    type : "Slot",
-                    direction : "hint",
-                    candidatedName : slot.name,
-                    role : matchedRole,
-                    price : this.lastSlotPrice
-                };
-            }
-        }
-
-        return {
-            type : "Slot",
-            direction : "hint",
-            candidatedName : null,
-            role : matchedRole,
-            price : this.lastSlotPrice
-        };
-    }
-
-    setSlotNameAndClassifyLogId() {
-        // タイプごとにログIDを分類
-        const idByType = {
-            Bar : [],
-            Slot : [],
-            Changer : [],
-            PtoP : [],
-            Unknown : [],
-        };
-
-        const timeThresholdMs = 3 * 60 * 1000; // スロットを離れたと判断する時間(ms)
-
-        let prevTime = null;   // 直近のスロットを回した時刻
-        let prevPrice = null; // 直近のスロットの1回転の金額
-        let slotBuffer = [];    // 現在の区間のSlotログID
-        let slotCounts = {};   // 役名が出現したスロット
-
-        const guessSlotName = () => {
-            // 金額に対応するスロットが1種類なら確定
-            const matches = this.slotPriceMap.get(prevPrice) || [];
-            if (matches.length === 1)
-                return matches[0].name;
-
-            // 最も役名が出現したスロットと推定
-            let bestSlot = Object.entries(slotCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "不明";
-
-            // 不明の場合、rolesに"undefined"または"other" を含むスロットがちょうど1つならそれに決定する
-            if (bestSlot === "不明") {
-                const fallbackSlots = matches.filter(slot =>
-                    slot.roles?.some(role => role === "undefined" || role === "other")
-                );
-
-                if (fallbackSlots.length === 1)
-                    return fallbackSlots[0].name;
-            }
-
-            return bestSlot;
-        }
-
-        const flushSlotBuffer = () => {
-            if (slotBuffer.length === 0)
-                return;
-            const bestSlot = guessSlotName();
-
-            // 現在の区間を追加
-            idByType.Slot.push({ name : bestSlot, ids : slotBuffer});
-
-            slotBuffer = [];
-            slotCounts = {};
-        };
-
-        const sortedEntries = Object.entries(this.logs).sort(
-            (a, b) => new Date(a[1].datetime) - new Date(b[1].datetime));
-
-        for (const [id, items] of sortedEntries) {
-            const {type, datetime, amount, direction, price} = items;
-
-            if (type === "Slot") {
-                const logTime = new Date(datetime);
-                const tooLongGap = prevTime && (logTime - prevTime > timeThresholdMs);
-                const amountChanged = prevPrice !== null && price !== prevPrice;
-
-                if (slotBuffer.length > 0 && (tooLongGap || amountChanged)) {
-                    flushSlotBuffer();
-                }
-
-                if (direction === "pay" || direction === "gain") {
-                    if (price === 0 && direction === "gain") {
-                        // 0円スロットは独立したスロット
-                        flushSlotBuffer();
-
-                        let slotName = "不明";
-                        if (amount >= 350 && amount <= 400) {
-                            slotName = "プレイコインスロット";
-                        } else if (amount === 1000000) {
-                            slotName = "ミリオンチャンススロット";
-                        }
-                        idByType.Slot.push({ name : slotName, ids : [id]});
-
-                        prevTime = logTime;
-                        prevPrice = 0;
-
+                if (direction === "pay") {
+                    if (!(name in this.barInfo)) 
                         continue;
+                
+                    prevTimeMap.pay[name] = now; 
+                    if (name === "花よりdan5")
+                        dan5Steps[50000] = true;
+
+                    const gainPrice = this.barInfo[name]?.gainPrice ?? null;
+                    if (gainPrice) 
+                        lastGainMap[this.barInfo[name].gainPrice] = name;
+                } else if (direction === "gain") {
+                    // 区間内で当選金額に対応する最後に購入した酒を取得
+                    let candidateName = lastGainMap[amount];
+                    // 特別ルール
+                    if (!candidateName && amount === 20000 && now >= barSlotStart) 
+                        candidateName = "店長特製ブルームーン";
+
+                    if (candidateName === "花よりdan5") {
+                        // 前段階が存在しないならスキップ
+                        const requiredSteps = Object.keys(dan5Steps).filter(a => a < amount);
+                        const allPassed = requiredSteps.every(a => dan5Steps[a]);
+                        if (!allPassed)
+                            candidateName = null;
                     }
 
-                    prevTime = logTime;
-                    prevPrice = price;
-                    slotBuffer.push(id);
-                } else if (direction === "hint") {
-                    const name = items.candidatedName;
-                    if (name) {
-                        slotCounts[name] = (slotCounts[name] || 0) + 1;
-                    }
-                    slotBuffer.push(id);
+                    if (!candidateName)
+                        continue;
+
+                    log.name = candidateName;
+                    prevTimeMap.gain[candidateName] = now;
+                } else if (direction === "charge") {
+                    const tDan5 = prevTimeMap.pay["花よりdan5"];
+                    const tConclave = prevTimeMap.gain["店長特製コンクラーヴェ"];
+                    const tBluemoon = prevTimeMap.gain["店長特製ブルームーン"];
+
+                    const getLatest = (times) => {
+                        const validEntries = Object.entries(times).filter(([_, time]) => time !== undefined && time !== null);
+                        if (validEntries.length === 0) return null;
+                        validEntries.sort((a, b) => b[1] - a[1]);
+                        return validEntries[0][0];
+                    };  
+
+                    let candidateName = null;
+                    if (amount === 50000 && now >= barSlotStart && now < barSlotUpdate) {
+                        // barSlot酒のうち最近のもの
+                        const times = { 
+                            "店長特製コンクラーヴェ": tConclave,
+                            "店長特製ブルームーン": tBluemoon 
+                        };
+
+                        candidateName = getLatest(times);
+                    } else if (amount === 100000 && now >= barSlotUpdate) {
+                        // dan5, barSlot酒のうち最近のもの
+                        const times = { 
+                            "花よりdan5": tDan5, 
+                            "店長特製コンクラーヴェ": tConclave, 
+                            "店長特製ブルームーン": tBluemoon 
+                        };
+
+                        candidateName = getLatest(times);
+                    } else {
+                        // それ以外はdan5かnull
+
+                        // 前段階が存在しないならスキップ
+                        const requiredSteps = Object.keys(dan5Steps).filter(a => a <= amount);
+                        const allPassed = requiredSteps.every(a => dan5Steps[a]);
+
+                        candidateName = this.dangoPrices.includes(amount) && tDan5 && allPassed? "花よりdan5" : null;
+                    }   
+
+                    if (!candidateName) 
+                        continue;
+
+                    log.name = candidateName;
+                    
+                    if (!prevTimeMap.charge[candidateName])
+                        prevTimeMap.charge[candidateName] = {};
+                    prevTimeMap.charge[candidateName][amount] = now;
+                } else if (direction === "mes") {   
+                    // 前段階が存在しないならスキップ
+                    const requiredSteps = Object.keys(dan5Steps).filter(a => a < amount);
+                    const allPassed = requiredSteps.every(a => dan5Steps[a]);
+                    if (!allPassed) continue;
+
+                    log.name = "花よりdan5";
+                    dan5Steps[log.amount] = true;
+                } else if (direction === "lose") {
+                    prevTimeMap.lose = now;
                 }
-            } else {
-                if (idByType[type]) {
-                    idByType[type].push(id);
-                } else {
-                    idByType.Unknown.push(id);
+            }
+
+            const usedNames = new Set();
+            const noUsedBar = ["乾杯酒", "メチル", "黄金狂"];
+
+            // 末尾から先頭へ逆走
+            for (let i = section.length - 1; i >= 0; i--) {
+                const id = section[i];
+                const log = this.logs[id];
+                const { direction, name } = log;
+
+                // ハズレログが出たら購入ログの精査が不可能になるので終了
+                if (direction === "lose") 
+                    break;
+
+                if (!name || !(name in this.barInfo)) 
+                    continue;
+
+                if (direction === "gain" || direction === "charge") {
+                    usedNames.add(name); // その酒が使われたとみなす
+                } else if (direction === "pay") {
+                    if (!usedNames.has(name) && !noUsedBar.includes(name)) 
+                        log.name = null; // 使用されなかった購入ログは除外
                 }
             }
         }
+    }
 
-        flushSlotBuffer();
+    _resolveSlotName(sections) {
+        for (const section of Object.values(sections)) {
+            const payPrices = new Set();
+            const rolesInSection = [];
+            
+            // セクション内の支払額と役名を収集
+            for (const id of section) {
+                const log = this.logs[id];
+                if (log.direction === "pay") {
+                    payPrices.add(log.amount);
+                } else if (log.direction === "role" && log.role) {
+                    rolesInSection.push(log.role);
+                }
+            }
 
-        return idByType;
+            if (payPrices.size === 0) {
+                let isFreeSection = false;
+                for (const freeRole of ["虹コイン揃い", "kミリオンチャレンジ成功k", "ハズレ"]) {
+                    if (rolesInSection.includes(freeRole)) {
+                        payPrices.add(0);
+                        isFreeSection = true;
+                        break;
+                    }
+                }
+                if (!isFreeSection)
+                    continue;
+            }
+
+            // 支払額が1種類以上ならば場合はエラー
+            if (payPrices.size > 1) 
+                continue;
+
+            const [price] = payPrices;
+
+            // 金額に対応するスロット候補を取得
+            const candidates = Object.entries(this.slotInfo).filter(
+                ([_, info]) => info.price === price
+            );
+
+            let bestName = null;
+
+            if (candidates.length === 1) {
+                // 金額に対応するスロットが1つだけ → それを使用
+                bestName = candidates[0][0];
+            } else {
+                // 複数候補 → 役一致スコアで最良候補を選ぶ
+                let bestScore = 0;
+                for (const [name, info] of candidates) {
+                    const validRoles = new Set(info.roles);
+                    let matchCount = 0;
+                    for (const role of rolesInSection) {
+                        if (validRoles.has(role)) matchCount++;
+                    }
+                    if (matchCount > bestScore) {
+                        bestScore = matchCount;
+                        bestName = name;
+                    }
+                }
+            }
+
+            if (bestName === null) 
+                bestName = "不明";
+
+            // price, name を代入
+            for (const id of section) {
+                this.logs[id].price = price;
+                this.logs[id].name = bestName;
+            }
+        }
     }
 }

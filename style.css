@@ -52,53 +52,34 @@ table {
 }
 
 th, td {
-    border: 1px solid #eee;
+    border: 1px ridge #eee;
     padding: 4px 6px;
     text-align: right;
     white-space: nowrap; 
 }
 
-
-tr.indent-0 td {
+.depth-1 {
     background-color: #e6f7ff;
     font-weight: bold;
-    border-top: 2px solid #888;
 }
 
-tr.indent-1 td:first-child {
-    padding-right: 2em;
-    font-weight: bold;
+.depth-2 {
     background-color: #c2c2c2;
-}
-tr.indent-1 td {
-    background-color: #c2c2c2;
-    font-weight: 600;
+    font-style: italic;
 }
 
-tr.indent-2 td:first-child {
-    max-width: 300px;        
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    color: #444;
-}
-
-tr.indent-2 td {
-    background-color: #ffffff;
-}
-
-td.muted {
-    color: #999;
-    font-size: 0.9em;
-    padding: 0 4px;
+.depth-3 {
+    background-color: #fff;
 }
 
 td.positive {
     color: green;
+    font-weight: bold;
 }
 
 td.negative {
     color: red;
+    font-weight: bold;
 }
 
 dialog {
