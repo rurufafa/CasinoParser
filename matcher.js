@@ -19,7 +19,7 @@ export default class LogMatcher {
 
         const [_, time, logLevel, content] = match;
         // 不正な形式
-        if (time.length !== 8 || logLevel !== "Render thread/INFO")
+        if (time.length !== 8)
             return null;
 
         const datetime = `${dateStr}T${time}`;
