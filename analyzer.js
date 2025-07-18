@@ -73,6 +73,8 @@ export default class LogAnalyzer {
             // この区間内で購入された酒
             const purchasedBefore = {};
 
+            let seenTriumph = false; 
+
             for (const id of section) {
                 const log = this.logs[id];
                 const {name, amount, direction} = log;
@@ -151,6 +153,12 @@ export default class LogAnalyzer {
                     g.gainAmount += amount;
                     b.gainAmount += amount;
                     b.gainCount++;
+
+                    // Triumphだけ初出判定してpayCount++
+                    if (name === "Triumph" && !seenTriumph) {
+                        b.payCount++;
+                        seenTriumph = true;
+                    }
 
                     // 連敗記録のリセット
                     if (lastGainCount[name]) {
