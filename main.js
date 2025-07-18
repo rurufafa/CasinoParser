@@ -226,11 +226,26 @@ function renderStatsTable(result) {
     window.analysisResult = result; 
     const { bar, slot, changer, ptop } = result.stats;
 
-    // 各タブにそれぞれのテーブルを描画
+    // テーブル描画
     document.getElementById("bar-table-container").innerHTML = createBarTable(bar);
     document.getElementById("slot-table-container").innerHTML = createSlotTable(slot);
     document.getElementById("changer-table-container").innerHTML = createChangerTable(changer);
     document.getElementById("ptop-table-container").innerHTML = createPtoPTable(ptop);
+
+    // --- コピーボタンを追加 ---
+    const barContainer = document.getElementById("bar-table-container");
+
+    const copyBtn = document.createElement("button");
+    copyBtn.textContent = "酒の購入本数・当選回数をコピー";
+    copyBtn.style.margin = "10px 0";
+    copyBtn.onclick = () => {
+        const text = createBarSummaryText(bar);
+        navigator.clipboard.writeText(text)
+            .then(() => alert("コピーしました！"))
+            .catch(err => alert("コピーに失敗しました: " + err));
+    };
+
+    barContainer.prepend(copyBtn);
 }
 
 function formatDuration(ms) {
@@ -844,4 +859,19 @@ function openTextInNewTab(title, content) {
         </html>
     `);
     newWindow.document.close();
+}
+
+function createBarSummaryText(stats) {
+    const lines = [];
+    const genreOrder = ["Beginner", "Gambler", "VIP", "Secret"];
+
+    for (const genre of genreOrder) {
+        const g = stats.genres[genre];
+        if (!g) continue;
+
+        for (const [name, bar] of Object.entries(g.bars)) {
+            lines.push(`${name},${bar.payCount}本,${bar.gainCount}回`);
+        }
+    }
+    return lines.join("\n");
 }
