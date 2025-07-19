@@ -97,7 +97,7 @@ export default class LogParser {
         return false;
     }
 
-    _splitDefaultSections(ids, exitsId, timeThresholdMs = 10 * 60 * 1000) {
+    _splitDefaultSections(ids, exitsId, timeThresholdMs = 5 * 60 * 1000) {
         const sections = [];
         let section = [];
         let prevTime = null;
