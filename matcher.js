@@ -24,6 +24,11 @@ export default class LogMatcher {
 
         const datetime = `${dateStr}T${time}`;
 
+        console.debug("MATCH:", {
+            datetime,
+            chat: content
+        });
+
         let log = this._matchStatusLog(content);
         if (log)
             return { datetime, chat : content, ...log };
