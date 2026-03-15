@@ -159,6 +159,10 @@ export default class LogMatcher {
         if (line === "ハズレ!") 
             return {type : "bar", direction : "lose"};
 
+        // --- ハズレログ 新Man10GambleBar ---
+        if (line === "外れました") 
+            return {type : "bar", direction : "lose"};
+
         // dan5の当選メッセージログ
         switch (line) {
             case "§d§lまだまだ飲めそうな気がする":
