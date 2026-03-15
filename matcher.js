@@ -98,7 +98,9 @@ export default class LogMatcher {
 
     _matchBarLog(line) {
         // --- 購入ログ 新Man10GambleBar ---
-        const barBuy = line.match(/^\[Man10GambleBar\].*◆\s*§a§l([^§]+)§rを購入しました$/);
+        const clean = line.replace(/§./g, "");
+
+        const barBuy = clean.match(/^\[Man10GambleBar\].*◆\s*(.+?)を購入しました$/);
 
         if (barBuy) {
             const name = barBuy[1].trim();
