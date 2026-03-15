@@ -12,10 +12,11 @@ function extractDateFromFileName(fileName) {
     return null;
 }
 
-async function processFiles(files, startDateStr, endDateStr) {
+async function processFiles(files, startDateStr, endDateStr, encoding) {
     const start = new Date(startDateStr);
     const end = new Date(endDateStr);
-    const decoder = new TextDecoder("shift-jis");
+    const decoder = new TextDecoder(encoding);
+
     const matcher = new LogMatcher();
 
     let it = 0;
@@ -220,7 +221,9 @@ document.getElementById("folderInput").addEventListener("change", async (e) => {
         };
     }
 
-    const logs = await processFiles(logFiles, startDate, endDate);
+    const encoding = document.getElementById("encoding").value;
+
+    const logs = await processFiles(logFiles, startDate, endDate, encoding);
     const parser = new LogParser(barInfo, slotInfo, logs);
     const [parsedLogs, sectionMap] = parser.parseLog();
 
