@@ -9,13 +9,22 @@ export default class LogMatcher {
     }
 
     matchLog(dateStr, line) {
+
+        console.debug("INPUT:", line);
+
         // 無関係なログは除く
-        if (!this._filterLine(line))
+        if (!this._filterLine(line)) {
+            console.debug("FILTERED_OUT:", line);
             return null;
+        }
+
+        console.debug("PASSED_FILTER:", line);
 
         const match = line.match(/^\[(.*?)\] \[(.*?)\]: (.*)/);
-        if (!match)
+        if (!match) {
+            console.debug("FORMAT_FAIL:", line);
             return null;
+        }
 
         const [_, time, logLevel, content] = match;
         // 不正な形式
