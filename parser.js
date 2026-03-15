@@ -39,6 +39,7 @@ export default class LogParser {
                     exitsId.push(id);
                 idMap.status.push(id);
             } else if (this.isInCasino) {
+                console.log(log);
                 idMap[log.type].push(id);
             }
         }
