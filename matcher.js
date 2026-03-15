@@ -25,8 +25,21 @@ export default class LogMatcher {
         const datetime = `${dateStr}T${time}`;
 
         let log = this._matchStatusLog(content);
-        if (log)
-            return { datetime, chat : content, ...log };
+        // if (log)
+            // return { datetime, chat : content, ...log };
+
+
+        if (log) {
+            this.casinoCount = (this.casinoCount || 0) + 1;
+
+            console.debug("MATCH:", {
+                datetime,
+                chat: chatLine,
+                ...log
+            });
+
+            return { datetime, chat : chatLine, ...log };
+        }
 
         const chatMatch = content.match(/\[System\] \[CHAT\] (.+)/);
         if (!chatMatch)
