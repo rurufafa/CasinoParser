@@ -12,10 +12,26 @@ function extractDateFromFileName(fileName) {
     return null;
 }
 
-async function processFiles(files, startDateStr, endDateStr, encoding) {
+function decodeAuto(buffer) {
+    const uint8 = new Uint8Array(buffer);
+
+    // UTF-8 を試す
+    try {
+        return new TextDecoder("utf-8", { fatal: true }).decode(uint8);
+    } catch {}
+
+    // Shift_JIS
+    try {
+        return new TextDecoder("shift_jis", { fatal: true }).decode(uint8);
+    } catch {}
+
+    // fallback
+    return new TextDecoder("utf-8").decode(uint8);
+}
+
+async function processFiles(files, startDateStr, endDateStr) {
     const start = new Date(startDateStr);
     const end = new Date(endDateStr);
-    const decoder = new TextDecoder(encoding);
 
     const matcher = new LogMatcher();
 
@@ -43,13 +59,16 @@ async function processFiles(files, startDateStr, endDateStr, encoding) {
             
             // ログ読み込み
             let text = "";
+
             const buffer = await file.arrayBuffer();
 
             if (name.endsWith(".log")) {
-                text = decoder.decode(new Uint8Array(buffer));
+                text = decodeAuto(buffer);
+
             } else if (name.endsWith(".gz")) {
                 const decompressed = pako.inflate(new Uint8Array(buffer));
-                text = decoder.decode(decompressed);
+                text = decodeAuto(decompressed.buffer);
+
             } else {
                 continue;
             }
@@ -221,9 +240,7 @@ document.getElementById("folderInput").addEventListener("change", async (e) => {
         };
     }
 
-    const encoding = document.getElementById("encoding").value;
-
-    const logs = await processFiles(logFiles, startDate, endDate, encoding);
+    const logs = await processFiles(logFiles, startDate, endDate);
     const parser = new LogParser(barInfo, slotInfo, logs);
     const [parsedLogs, sectionMap] = parser.parseLog();
 
