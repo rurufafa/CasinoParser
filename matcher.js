@@ -25,20 +25,17 @@ export default class LogMatcher {
         const datetime = `${dateStr}T${time}`;
 
         let log = this._matchStatusLog(content);
-        // if (log)
-            // return { datetime, chat : content, ...log };
-
+        if (log)
+            return { datetime, chat : content, ...log };
 
         if (log) {
-            this.casinoCount = (this.casinoCount || 0) + 1;
-
-            console.debug("MATCH:", {
+            console.debug("STATUS_MATCH:", {
                 datetime,
-                chat: chatLine,
+                chat: content,
                 ...log
             });
 
-            return { datetime, chat : chatLine, ...log };
+            return { datetime, chat : content, ...log };
         }
 
         const chatMatch = content.match(/\[System\] \[CHAT\] (.+)/);
@@ -52,8 +49,20 @@ export default class LogMatcher {
             this._matchChangerLog(chatLine) ||
             this._matchPtoPLog(chatLine);
         
+        // if (log) {
+        //     this.casinoCount = (this.casinoCount || 0) + 1;
+        //     return { datetime, chat : chatLine, ...log };
+        // }
+
         if (log) {
             this.casinoCount = (this.casinoCount || 0) + 1;
+
+            console.debug("CASINO_MATCH:", {
+                datetime,
+                chat: chatLine,
+                ...log
+            });
+
             return { datetime, chat : chatLine, ...log };
         }
 
