@@ -104,7 +104,7 @@ export default class LogMatcher {
 
         if (barBuy) {
             const name = barBuy[1].trim();
-            console.log(clean, name);
+            console.log(line, clean, name);
             return { type: "bar", direction: "pay", name };
         }
 
