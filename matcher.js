@@ -9,22 +9,13 @@ export default class LogMatcher {
     }
 
     matchLog(dateStr, line) {
-
-        console.debug("INPUT:", line);
-
         // 無関係なログは除く
-        if (!this._filterLine(line)) {
-            console.debug("FILTERED_OUT:", line);
+        if (!this._filterLine(line))
             return null;
-        }
-
-        console.debug("PASSED_FILTER:", line);
 
         const match = line.match(/^\[(.*?)\] \[(.*?)\]: (.*)/);
-        if (!match) {
-            console.debug("FORMAT_FAIL:", line);
+        if (!match)
             return null;
-        }
 
         const [_, time, logLevel, content] = match;
         // 不正な形式
@@ -32,11 +23,6 @@ export default class LogMatcher {
             return null;
 
         const datetime = `${dateStr}T${time}`;
-
-        console.debug("MATCH:", {
-            datetime,
-            chat: content
-        });
 
         let log = this._matchStatusLog(content);
         if (log)
