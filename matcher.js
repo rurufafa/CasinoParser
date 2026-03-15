@@ -75,6 +75,14 @@ export default class LogMatcher {
     }
 
     _matchBarLog(line) {
+        // --- 購入ログ 新Man10GambleBar ---
+        const barBuy = line.match(/^\[Man10GambleBar\].*◆\s*§a§l(.+?)§rを購入しました$/);
+        if (barBuy) {
+            const name = barBuy[1].trim();
+            return { type: "bar", direction: "pay", name };
+            // amountはここでは持たせない
+        }
+
         // 購入ログ
         const pay = line.match(/^あなたは ◆ (.+) を (\d{1,3}(?:,\d{3})*)円 で購入しました$/);
         if (pay) {
@@ -84,6 +92,21 @@ export default class LogMatcher {
                 return null;
 
             return {type : "bar", direction : "pay", name, amount};
+        }
+
+        // --- 当選ログ 新Man10GambleBar ---
+        const emoney = line.match(/^電子マネー\$(\d+(?:\.\d+)?)(?:E(\d+))?受取りました$/);
+        if (emoney) {
+
+            const base = parseFloat(emoney[1]);
+            const exp = emoney[2] ? parseInt(emoney[2]) : 0;
+
+            const amount = Math.round(base * 10 ** exp);
+
+            if (!(Number.isInteger(amount) && amount >= 1 && amount <= 10000000))
+                return null;
+
+            return { type: "bar", direction: "gain", amount };
         }
 
         // 当選ログ

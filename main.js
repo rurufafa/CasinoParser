@@ -103,6 +103,40 @@ async function loadBarInfo(path) {
     return barInfoMap;
 }
 
+async function loadBarPurchaseInfo(path) {
+    const response = await fetch(path, { cache: "no-cache" });
+    const text = await response.text();
+
+    const lines = text.split(/\r?\n/);
+    const map = {};
+    let currentGenre = null;
+
+    for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith(";"))
+            continue;
+
+        const sectionMatch = line.match(/^\[([^\]]+)\]$/);
+        if (sectionMatch) {
+            currentGenre = sectionMatch[1];
+            continue;
+        }
+
+        const kvMatch = line.match(/^(.+?)\s*=\s*(\d+)$/);
+        if (kvMatch && currentGenre !== null) {
+            const name = kvMatch[1].trim();
+            const price = parseInt(kvMatch[2], 10);
+
+            if (!map[name])
+                map[name] = {};
+
+            map[name].purchasePrice = price;
+        }
+    }
+
+    return map;
+}
+
 async function loadSlotInfo(path) {
     const response = await fetch(path, { cache: "no-cache" });
     const text = await response.text();
@@ -170,10 +204,21 @@ document.getElementById("folderInput").addEventListener("change", async (e) => {
     }
 
     // 酒、スロット情報ファイルを取得
-    const [barInfo, slotInfo] = await Promise.all([
-        loadBarInfo("./barInfo.ini"),
+    const [barGainInfo, barPurchaseInfo, slotInfo] = await Promise.all([
+        loadBarInfo("./barGainInfo.ini"),
+        loadBarPurchaseInfo("./barPurchaseInfo.ini"),
         loadSlotInfo("./slotInfo.ini")
     ]);
+
+    const barInfo = {};
+
+    for (const name in barGainInfo) {
+        barInfo[name] = {
+            genre: barGainInfo[name].genre,
+            gainPrice: barGainInfo[name].gainPrice,
+            purchasePrice: barPurchaseInfo[name]?.purchasePrice ?? null
+        };
+    }
 
     const logs = await processFiles(logFiles, startDate, endDate);
     const parser = new LogParser(barInfo, slotInfo, logs);

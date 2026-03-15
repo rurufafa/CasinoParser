@@ -234,7 +234,13 @@ export default class LogParser {
                 if (direction === "pay") {
                     if (!(name in this.barInfo)) 
                         continue;
-                
+
+                    if (!log.amount) {
+                        const info = this.barInfo[name];
+                        if (info?.purchasePrice)
+                            log.amount = info.purchasePrice;
+                    }
+
                     prevTimeMap.pay[name] = now; 
                     if (name === "花よりdan5")
                         dan5Steps[50000] = true;
