@@ -38,8 +38,8 @@ export default class LogParser {
                 if(this._updateStatus(log))
                     exitsId.push(id);
                 idMap.status.push(id);
-            // } else if (this.isInCasino) {
-            } else if (true) {
+            } else if (this.isInCasino) {
+                console.log(log);
                 idMap[log.type].push(id);
             }
         }
