@@ -211,8 +211,9 @@ export default class LogAnalyzer {
                 });
             }
         }
+
         for (const barName in lastLoseCount) {
-            if (lastLoseCount[bar]) {
+            if (lastLoseCount[barName]) {
                 const winArr = this._getOrInit(stats, ['winStreaks', barName], () => []);
                 winArr.push({
                     count: lastLoseCount[barName],
