@@ -28,15 +28,15 @@ export default class LogMatcher {
         if (log)
             return { datetime, chat : content, ...log };
 
-        if (log) {
-            console.debug("STATUS_MATCH:", {
-                datetime,
-                chat: content,
-                ...log
-            });
+        // if (log) {
+        //     console.debug("STATUS_MATCH:", {
+        //         datetime,
+        //         chat: content,
+        //         ...log
+        //     });
 
-            return { datetime, chat : content, ...log };
-        }
+        //     return { datetime, chat : content, ...log };
+        // }
 
         const chatMatch = content.match(/\[System\] \[CHAT\] (.+)/);
         if (!chatMatch)
@@ -49,22 +49,22 @@ export default class LogMatcher {
             this._matchChangerLog(chatLine) ||
             this._matchPtoPLog(chatLine);
         
-        // if (log) {
-        //     this.casinoCount = (this.casinoCount || 0) + 1;
-        //     return { datetime, chat : chatLine, ...log };
-        // }
-
         if (log) {
             this.casinoCount = (this.casinoCount || 0) + 1;
-
-            console.debug("CASINO_MATCH:", {
-                datetime,
-                chat: chatLine,
-                ...log
-            });
-
             return { datetime, chat : chatLine, ...log };
         }
+
+        // if (log) {
+        //     this.casinoCount = (this.casinoCount || 0) + 1;
+
+        //     console.debug("CASINO_MATCH:", {
+        //         datetime,
+        //         chat: chatLine,
+        //         ...log
+        //     });
+
+        //     return { datetime, chat : chatLine, ...log };
+        // }
 
         return null;
     }
