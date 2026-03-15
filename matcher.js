@@ -2,7 +2,7 @@ export default class LogMatcher {
     _filterLine(line) {
         // 高速化されたフィルタ
         const msg = line.slice(33);
-        if (!/[円飲酔引後!！外参$]/.test(msg))
+        if (!/[円飲酔引後!！外参$購]/.test(msg))
             return msg.includes("Setting") || msg.includes("Connect") || msg.includes("Warps") || msg.includes("Gacha2");
 
         return true;
