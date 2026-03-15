@@ -98,12 +98,13 @@ export default class LogMatcher {
 
     _matchBarLog(line) {
         // --- 購入ログ 新Man10GambleBar ---
-        const barBuy = line.match(/^\[Man10GambleBar\].*◆\s*§a§l(.+?)§rを購入しました$/);
+        const barBuy = line.match(/^\[Man10GambleBar\].*◆\s*§a§l([^§]+)§rを購入しました$/);
+
         if (barBuy) {
             const name = barBuy[1].trim();
             return { type: "bar", direction: "pay", name };
-            // amountはここでは持たせない
         }
+
 
         // 購入ログ
         const pay = line.match(/^あなたは ◆ (.+) を (\d{1,3}(?:,\d{3})*)円 で購入しました$/);
